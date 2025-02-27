@@ -1,0 +1,11 @@
+// File: .vscodeignore (files to exclude from the extension package)
+.vscode/**
+.vscode-test/**
+src/**
+.gitignore
+.yarnrc
+webpack.config.js
+**/tsconfig.json
+**/.eslintrc.json
+**/*.map
+**/*.ts
