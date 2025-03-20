@@ -81,6 +81,7 @@
           "enum": [
             "gemini-2.0-flash",
             "gemini-2.0-flash-lite",
+            "gemma-3-27b-it",
             "gemini-pro"
           ],
           "description": "Gemini model to use for the assistant"
