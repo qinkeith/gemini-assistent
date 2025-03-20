@@ -6,11 +6,47 @@ import { GeminiService } from './geminiService';
 export class GeminiPanel {
   private panel: vscode.WebviewPanel | undefined;
   private disposables: vscode.Disposable[] = [];
+  public currentQuestion: string | undefined;
+  public currentAnswer: string | undefined;
+  private static readonly viewType = 'geminiAssistant'; // Define a static view type
 
   constructor(
     private readonly extensionUri: vscode.Uri,
-    private readonly geminiService: GeminiService
-  ) {}
+    private readonly geminiService: GeminiService,
+    private readonly context: vscode.ExtensionContext
+  ) {
+    // Restore state from global state
+    this.currentQuestion = this.context.globalState.get<string>('geminiQuestion');
+    this.currentAnswer = this.context.globalState.get<string>('geminiAnswer');
+    
+    // Try to revive the panel if it was previously open
+    this.revivePanel();
+  }
+
+  private revivePanel() {
+    // Check if there's a panel to revive
+    if (this.currentQuestion && this.currentAnswer) {
+        const columnToShowIn = vscode.window.activeTextEditor
+        ? vscode.window.activeTextEditor.viewColumn
+        : undefined;
+        
+        this.panel = vscode.window.createWebviewPanel(
+            GeminiPanel.viewType,
+            'Gemini Assistant',
+            { viewColumn: columnToShowIn || vscode.ViewColumn.One, preserveFocus: true }, // Use an object for options
+            {
+              enableScripts: true,
+              retainContextWhenHidden: true,
+              localResourceRoots: [
+                vscode.Uri.joinPath(this.extensionUri, 'media')
+              ]
+            }
+          );
+        
+        this.updateContent(this.currentQuestion, this.currentAnswer);
+        this.setupPanelListeners();
+    }
+  }
 
   public showPanel(question: string, answer: string): void {
     const columnToShowIn = vscode.window.activeTextEditor
@@ -24,7 +60,7 @@ export class GeminiPanel {
     } else {
       // Otherwise, create a new panel
       this.panel = vscode.window.createWebviewPanel(
-        'geminiAssistant',
+        GeminiPanel.viewType, // Use the static view type
         'Gemini Assistant',
         columnToShowIn || vscode.ViewColumn.One,
         {
@@ -38,48 +74,62 @@ export class GeminiPanel {
 
       // Set initial content
       this.updateContent(question, answer);
-
-      // Handle panel disposal
-      this.panel.onDidDispose(
-        () => {
-          this.panel = undefined;
-          this.disposables.forEach(d => d.dispose());
-          this.disposables = [];
-        },
-        null,
-        this.disposables
-      );
-
-      // Handle messages from the webview
-      this.panel.webview.onDidReceiveMessage(
-        message => {
-          switch (message.command) {
-            case 'insertCode':
-              const editor = vscode.window.activeTextEditor;
-              if (editor) {
-                editor.edit(editBuilder => {
-                  editBuilder.insert(editor.selection.active, message.code);
-                });
-              }
-              break;
-          }
-        },
-        null,
-        this.disposables
-      );
+      this.setupPanelListeners();
     }
   }
 
-  private updateContent(question: string, answer: string): void {
+  private setupPanelListeners() {
+    if (!this.panel) return;
+    
+    // Handle panel disposal
+    this.panel.onDidDispose(
+      () => {
+        this.panel = undefined;
+        this.disposables.forEach(d => d.dispose());
+        this.disposables = [];
+      },
+      null,
+      this.disposables
+    );
+
+    // Handle messages from the webview
+    this.panel.webview.onDidReceiveMessage(
+      message => {
+        switch (message.command) {
+          case 'insertCode':
+            const editor = vscode.window.activeTextEditor;
+            if (editor) {
+              editor.edit(editBuilder => {
+                editBuilder.insert(editor.selection.active, message.code);
+              });
+            }
+            break;
+        }
+      },
+      null,
+      this.disposables
+    );
+  }
+
+  public updateContent(question: string, answer: string): void {
     if (!this.panel) {
       return;
     }
 
     // Convert markdown to HTML for the response
     // Ensure we're getting a string by using marked.parse synchronously
-    const htmlAnswer = marked.marked(answer) as string; // Use marked() directly    
+    const htmlAnswer = new marked.Parser().parse(marked.Lexer.lex(answer));
 
     this.panel.webview.html = this.getWebviewContent(question, htmlAnswer);
+    this.saveState(question, answer);
+    this.currentQuestion = question;
+    this.currentAnswer = answer;
+  }
+
+  public saveState(question: string, answer: string): void {
+    // Save state to global state
+    this.context.globalState.update('geminiQuestion', question);
+    this.context.globalState.update('geminiAnswer', answer);
   }
 
   private getWebviewContent(question: string, answer: string): string {

@@ -3,6 +3,8 @@ import * as vscode from 'vscode';
 import { GeminiService } from './geminiService';
 import { GeminiPanel } from './geminiPanel';
 
+let geminiPanel: GeminiPanel;
+
 export function activate(context: vscode.ExtensionContext) {
   console.log('Gemini Assistant is now active');
 
@@ -10,7 +12,7 @@ export function activate(context: vscode.ExtensionContext) {
   const geminiService = new GeminiService();
   
   // Create and register the webview panel provider
-  const geminiPanel = new GeminiPanel(context.extensionUri, geminiService);
+  geminiPanel = new GeminiPanel(context.extensionUri, geminiService, context);
   
   // Register TreeView
   const treeDataProvider = new GeminiChatProvider(geminiService);
@@ -76,7 +78,12 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(askGeminiCommand, clearChatCommand);
 }
 
-export function deactivate() {}
+export function deactivate() {
+  // Save the current question and answer to global state
+  if (geminiPanel) {
+    geminiPanel.saveState(geminiPanel.currentQuestion ?? '', geminiPanel.currentAnswer ?? '');
+  }
+}
 
 // TreeView data provider for showing chat history
 class GeminiChatProvider implements vscode.TreeDataProvider<ChatItem> {
