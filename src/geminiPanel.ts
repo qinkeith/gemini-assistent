@@ -120,7 +120,78 @@ export class GeminiPanel {
     // Ensure we're getting a string by using marked.parse synchronously
     const htmlAnswer = new marked.Parser().parse(marked.Lexer.lex(answer));
 
-    this.panel.webview.html = this.getWebviewContent(question, htmlAnswer);
+    // Get the existing content
+    let existingContent = this.panel.webview.html;
+
+    // Wrap the existing content in HTML, head, and body tags if it's not already wrapped
+    if (!existingContent.includes('<html')) {
+      existingContent = '<!DOCTYPE html>\n' +
+        '<html lang="en">\n' +
+        '<head>\n' +
+        '  <meta charset="UTF-8">\n' +
+        '  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n' +
+        '  <title>Gemini Assistant</title>\n' +
+        '  <style>\n' +
+        '    body {\n' +
+        '      font-family: var(--vscode-font-family);\n' +
+        '      padding: 20px;\n' +
+        '      color: var(--vscode-editor-foreground);\n' +
+        '      background-color: var(--vscode-editor-background);\n' +
+        '    }\n' +
+        '    .message {\n' +
+        '      margin-bottom: 20px;\n' +
+        '      padding: 10px;\n' +
+        '      border-radius: 5px;\n' +
+        '    }\n' +
+        '    .user-message {\n' +
+        '      background-color: var(--vscode-editor-inactiveSelectionBackground);\n' +
+        '    }\n' +
+        '    .assistant-message {\n' +
+        '      background-color: var(--vscode-editor-selectionBackground);\n' +
+        '    }\n' +
+        '    .message-header {\n' +
+        '      font-weight: bold;\n' +
+        '      margin-bottom: 10px;\n' +
+        '    }\n' +
+        '    pre {\n' +
+        '      background-color: var(--vscode-editor-background);\n' +
+        '      padding: 10px;\n' +
+        '      border-radius: 3px;\n' +
+        '      overflow: auto;\n' +
+        '      position: relative;\n' +
+        '    }\n' +
+        '    code {\n' +
+        '      font-family: var(--vscode-editor-font-family);\n' +
+        '    }\n' +
+        '    .copy-button {\n' +
+        '      position: absolute;\n' +
+        '      top: 5px;\n' +
+        '      right: 5px;\n' +
+        '      background-color: var(--vscode-button-background);\n' +
+        '      color: var(--vscode-button-foreground);\n' +
+        '      border: none;\n' +
+        '      border-radius: 3px;\n' +
+        '      padding: 5px 10px;\n' +
+        '      cursor: pointer;\n' +
+        '      font-size: 12px;\n' +
+        '    }\n' +
+        '    .insert-button {\n' +
+        '      background-color: var(--vscode-button-background);\n' +
+        '      color: var(--vscode-button-foreground);\n' +
+        '      border: none;\n' +
+        '      border-radius: 3px;\n' +
+        '      padding: 5px 10px;\n' +
+        '      margin-top: 5px;\n' +
+        '      cursor: pointer;\n' +
+        '    }\n' +
+        '  </style>\n' +
+        '</head>\n' +
+        '<body>' + existingContent + '</body>\n' +
+        '</html>';
+    }
+
+    // Append the new question and answer to the existing content
+    this.panel.webview.html = existingContent + this.getWebviewContent(question, htmlAnswer);
     this.saveState(question, answer);
     this.currentQuestion = question;
     this.currentAnswer = answer;
@@ -134,68 +205,7 @@ export class GeminiPanel {
 
   private getWebviewContent(question: string, answer: string): string {
     // Create HTML content for the webview
-    return `<!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Gemini Assistant</title>
-      <style>
-        body {
-          font-family: var(--vscode-font-family);
-          padding: 20px;
-          color: var(--vscode-editor-foreground);
-          background-color: var(--vscode-editor-background);
-        }
-        .message {
-          margin-bottom: 20px;
-          padding: 10px;
-          border-radius: 5px;
-        }
-        .user-message {
-          background-color: var(--vscode-editor-inactiveSelectionBackground);
-        }
-        .assistant-message {
-          background-color: var(--vscode-editor-selectionBackground);
-        }
-        .message-header {
-          font-weight: bold;
-          margin-bottom: 10px;
-        }
-        pre {
-          background-color: var(--vscode-editor-background);
-          padding: 10px;
-          border-radius: 3px;
-          overflow: auto;
-          position: relative;
-        }
-        code {
-          font-family: var(--vscode-editor-font-family);
-        }
-        .copy-button {
-          position: absolute;
-          top: 5px;
-          right: 5px;
-          background-color: var(--vscode-button-background);
-          color: var(--vscode-button-foreground);
-          border: none;
-          border-radius: 3px;
-          padding: 5px 10px;
-          cursor: pointer;
-          font-size: 12px;
-        }
-        .insert-button {
-          background-color: var(--vscode-button-background);
-          color: var(--vscode-button-foreground);
-          border: none;
-          border-radius: 3px;
-          padding: 5px 10px;
-          margin-top: 5px;
-          cursor: pointer;
-        }
-      </style>
-    </head>
-    <body>
+    return `
       <div class="message user-message">
         <div class="message-header">You:</div>
         <div>${question.replace(/\n/g, '<br>')}</div>
@@ -204,52 +214,7 @@ export class GeminiPanel {
         <div class="message-header">Gemini:</div>
         <div class="response-content">${this.processCodeBlocks(answer)}</div>
       </div>
-      <script>
-        (function() {
-          // Handle code block interactions
-          document.querySelectorAll('pre').forEach((block, index) => {
-            // Extract code content
-            const code = block.querySelector('code').innerText;
-            
-            // Add copy button
-            const copyButton = document.createElement('button');
-            copyButton.textContent = 'Copy';
-            copyButton.className = 'copy-button';
-            copyButton.onclick = () => {
-              navigator.clipboard.writeText(code);
-              copyButton.textContent = 'Copied!';
-              setTimeout(() => {
-                copyButton.textContent = 'Copy';
-              }, 2000);
-            };
-            block.appendChild(copyButton);
-            
-            // Add insert button for code blocks
-            const insertButton = document.createElement('button');
-            insertButton.textContent = 'Insert into Editor';
-            insertButton.className = 'insert-button';
-            insertButton.onclick = () => {
-              // Send message to extension
-              vscode.postMessage({
-                command: 'insertCode',
-                code: code
-              });
-            };
-            
-            // Create container for the insert button
-            const buttonContainer = document.createElement('div');
-            buttonContainer.appendChild(insertButton);
-            
-            // Add after the code block
-            block.parentNode.insertBefore(buttonContainer, block.nextSibling);
-          });
-          
-          // Define vscode API for message posting
-          const vscode = acquireVsCodeApi();
-        })();
-      </script>
-    </body>
-    </html>`;
+    `;
   }
 
   private processCodeBlocks(html: string): string {
