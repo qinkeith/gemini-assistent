@@ -18,7 +18,7 @@ export class GeminiPanel {
     // Restore state from global state
     this.currentQuestion = this.context.globalState.get<string>('geminiQuestion');
     this.currentAnswer = this.context.globalState.get<string>('geminiAnswer');
-    
+
     // Try to revive the panel if it was previously open
     this.revivePanel();
   }
@@ -26,25 +26,25 @@ export class GeminiPanel {
   private revivePanel() {
     // Check if there's a panel to revive
     if (this.currentQuestion && this.currentAnswer) {
-        const columnToShowIn = vscode.window.activeTextEditor
+      const columnToShowIn = vscode.window.activeTextEditor
         ? vscode.window.activeTextEditor.viewColumn
         : undefined;
-        
-        this.panel = vscode.window.createWebviewPanel(
-            GeminiPanel.viewType,
-            'Gemini Assistant',
-            { viewColumn: columnToShowIn || vscode.ViewColumn.One, preserveFocus: true }, // Use an object for options
-            {
-              enableScripts: true,
-              retainContextWhenHidden: true,
-              localResourceRoots: [
-                vscode.Uri.joinPath(this.extensionUri, 'media')
-              ]
-            }
-          );
-        
-        this.updateContent(this.currentQuestion, this.currentAnswer);
-        this.setupPanelListeners();
+
+      this.panel = vscode.window.createWebviewPanel(
+        GeminiPanel.viewType,
+        'Gemini Assistant',
+        { viewColumn: columnToShowIn || vscode.ViewColumn.One, preserveFocus: true }, // Use an object for options
+        {
+          enableScripts: true,
+          retainContextWhenHidden: true,
+          localResourceRoots: [
+            vscode.Uri.joinPath(this.extensionUri, 'media')
+          ]
+        }
+      );
+
+      this.updateContent(this.currentQuestion, this.currentAnswer);
+      this.setupPanelListeners();
     }
   }
 
@@ -80,7 +80,7 @@ export class GeminiPanel {
 
   private setupPanelListeners() {
     if (!this.panel) return;
-    
+
     // Handle panel disposal
     this.panel.onDidDispose(
       () => {
@@ -104,11 +104,59 @@ export class GeminiPanel {
               });
             }
             break;
+          case 'saveContent':
+            this.saveWebviewContent();
+            break;
         }
       },
       null,
       this.disposables
     );
+
+    this.injectContextMenuScript();
+  }
+
+  private injectContextMenuScript() {
+    if (!this.panel) return;
+
+    const script = `
+      <script>
+        const vscode = acquireVsCodeApi();
+        document.addEventListener('contextmenu', event => {
+          event.preventDefault();
+          let saveOption = document.createElement('div');
+          saveOption.textContent = 'Save to File';
+          saveOption.style.position = 'absolute';
+          saveOption.style.left = event.clientX + 'px';
+          saveOption.style.top = event.clientY + 'px';
+          saveOption.style.backgroundColor = 'var(--vscode-menu-background)';
+          saveOption.style.color = 'var(--vscode-menu-foreground)';
+          saveOption.style.border = '1px solid var(--vscode-menu-border)';
+          saveOption.style.padding = '5px';
+          saveOption.style.zIndex = '1000';
+          saveOption.style.cursor = 'pointer';
+
+          document.body.appendChild(saveOption);
+
+          saveOption.addEventListener('click', () => {
+            vscode.postMessage({ command: 'saveContent' });
+            document.body.removeChild(saveOption);
+          });
+
+          document.addEventListener('click', function onClickOutside(event) {
+            if (event.target !== saveOption) {
+              document.body.removeChild(saveOption);
+              document.removeEventListener('click', onClickOutside);
+            }
+          });
+        });
+      </script>
+    `;
+
+    // Inject the script only if it's not already there
+    if (!this.panel.webview.html.includes("vscode.postMessage({ command: 'saveContent' })")) {
+        this.panel.webview.html = this.panel.webview.html.replace('</body>', script + '</body>');
+    }
   }
 
   public updateContent(question: string, answer: string): void {
@@ -195,6 +243,7 @@ export class GeminiPanel {
     this.saveState(question, answer);
     this.currentQuestion = question;
     this.currentAnswer = answer;
+    this.injectContextMenuScript();
   }
 
   public saveState(question: string, answer: string): void {
@@ -220,10 +269,99 @@ export class GeminiPanel {
   private processCodeBlocks(html: string): string {
     // Add functionality to code blocks
     // This is a simple approach - in a real extension, you might use a more robust HTML parsing
-    return html.replace(/<pre><code class="language-(\w+)">([\s\S]*?)<\/code><\/pre>/g, 
+    return html.replace(/<pre><code class="language-(\w+)">([\s\S]*?)<\/code><\/pre>/g,
       (_match, language, code) => {
         return `<pre><code class="language-${language}">${code}</code></pre>`;
       }
     );
   }
+
+  private async saveWebviewContent() {
+    if (!this.panel) {
+      return;
+    }
+
+    // Get the webview content
+    const webviewContent = this.panel.webview.html;
+
+    // Extract the content of the chat
+    const start = webviewContent.indexOf('<div class="message user-message">');
+    const end = webviewContent.lastIndexOf('<div class="message assistant-message">');
+    
+    // If there is no messages, return
+    if (start === -1 || end === -1) {
+      vscode.window.showErrorMessage(`No content to save`);
+      return;
+    }
+
+    // Extract the content of the chat
+    const content = webviewContent.substring(start, webviewContent.length);
+
+    // Wrap the content in a basic HTML structure
+    const fullHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gemini Chat</title>
+    <style>
+        body {
+            font-family: var(--vscode-font-family);
+            padding: 20px;
+            color: var(--vscode-editor-foreground);
+            background-color: var(--vscode-editor-background);
+        }
+        .message {
+            margin-bottom: 20px;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .user-message {
+            background-color: var(--vscode-editor-inactiveSelectionBackground);
+        }
+        .assistant-message {
+            background-color: var(--vscode-editor-selectionBackground);
+        }
+        .message-header {
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        pre {
+            background-color: var(--vscode-editor-background);
+            padding: 10px;
+            border-radius: 3px;
+            overflow: auto;
+            position: relative;
+        }
+        code {
+            font-family: var(--vscode-editor-font-family);
+        }
+    </style>
+</head>
+<body>
+    ${content}
+</body>
+</html>`;
+
+    const options: vscode.SaveDialogOptions = {
+      defaultUri: vscode.Uri.parse('gemini_content.html'),
+      filters: {
+        'HTML files': ['html']
+      }
+    };
+
+    const uri = await vscode.window.showSaveDialog(options);
+    if (uri) {
+      try {
+        await vscode.workspace.fs.writeFile(uri, Buffer.from(fullHtml, 'utf8'));
+        vscode.window.showInformationMessage(`Gemini content saved to ${uri.fsPath}`);
+      } catch (error) {
+        vscode.window.showErrorMessage(`Failed to save Gemini content: ${error}`);
+      }
+    }
+  }
+
+ 
+
+
 }
