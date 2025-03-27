@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.4]
+
+- Fix popup menu location
+
 ## [0.1.3]
 
 - Add Google `gemini-2.5-pro-exp-03-25` and `Custom` model

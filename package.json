@@ -2,7 +2,7 @@
   "name": "vscode-gemini-assistant",
   "displayName": "Gemini Assistant",
   "description": "AI coding assistant powered by Google's Gemini LLM",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "publisher": "Bini",
   "license": "MIT",
   "icon": "resources/gemini-icon-128.ico",
