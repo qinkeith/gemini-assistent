@@ -159,8 +159,8 @@ export class GeminiPanel {
           const contextMenu = document.createElement('div');
           contextMenu.id = 'custom-context-menu';
           contextMenu.style.position = 'absolute';
-          contextMenu.style.left = event.clientX + 'px';
-          contextMenu.style.top = event.clientY + 'px';
+          contextMenu.style.left = event.pageX + 'px';
+          contextMenu.style.top = event.pageY + 'px';
           contextMenu.style.backgroundColor = 'var(--vscode-menu-background)';
           contextMenu.style.color = 'var(--vscode-menu-foreground)';
           contextMenu.style.border = '1px solid var(--vscode-menu-border)';
