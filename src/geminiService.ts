@@ -9,24 +9,38 @@ interface ChatMessage {
 }
 
 export class GeminiService {
-  private apiKey: string;
-  private model: string;
+  private apiKey!: string; // Added '!' for definite assignment assertion
+  private model!: string;  // Added '!' for definite assignment assertion
   private chatHistory: ChatMessage[] = [];
 
   constructor() {
-    // Get configuration
-    const config = vscode.workspace.getConfiguration('geminiAssistant');
-    this.apiKey = config.get('apiKey', '');
-    this.model = config.get('model', 'gemini-pro');
+    this.updateConfiguration(); // Initial configuration load
     
     // Listen for configuration changes
     vscode.workspace.onDidChangeConfiguration(e => {
       if (e.affectsConfiguration('geminiAssistant')) {
-        const newConfig = vscode.workspace.getConfiguration('geminiAssistant');
-        this.apiKey = newConfig.get('apiKey', '');
-        this.model = newConfig.get('model', 'gemini-pro');
+        this.updateConfiguration();
       }
     });
+  }
+
+  private updateConfiguration() {
+    const config = vscode.workspace.getConfiguration('geminiAssistant');
+    this.apiKey = config.get('apiKey', '');
+    // Explicitly type as string to avoid incorrect type inference
+    const selectedModel = config.get<string>('model', 'gemini-pro'); 
+    
+    if (selectedModel === 'custom') {
+      // Explicitly type as string
+      this.model = config.get<string>('customModelName', '').trim(); 
+      if (!this.model) {
+        // Fallback or show error if custom is selected but no custom name provided
+        vscode.window.showWarningMessage("Gemini model is set to 'custom', but no custom model name is specified. Falling back to 'gemini-pro'.");
+        this.model = 'gemini-pro'; 
+      }
+    } else {
+      this.model = selectedModel;
+    }
   }
 
   async queryGemini(prompt: string, codeContext: string = ''): Promise<string> {
@@ -80,7 +94,7 @@ export class GeminiService {
             temperature: 0.7,
             topK: 40,
             topP: 0.95,
-            maxOutputTokens: 2048,
+            maxOutputTokens: 65536,
           }
         },
         {

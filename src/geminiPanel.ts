@@ -8,23 +8,19 @@ export class GeminiPanel {
   private disposables: vscode.Disposable[] = [];
   public currentQuestion: string | undefined;
   public currentAnswer: string | undefined;
-  private static readonly viewType = 'geminiAssistant'; // Define a static view type
+  private static readonly viewType = 'geminiAssistant';
 
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly geminiService: GeminiService,
     private readonly context: vscode.ExtensionContext
   ) {
-    // Restore state from global state
     this.currentQuestion = this.context.globalState.get<string>('geminiQuestion');
     this.currentAnswer = this.context.globalState.get<string>('geminiAnswer');
-
-    // Try to revive the panel if it was previously open
     this.revivePanel();
   }
 
   private revivePanel() {
-    // Check if there's a panel to revive
     if (this.currentQuestion && this.currentAnswer) {
       const columnToShowIn = vscode.window.activeTextEditor
         ? vscode.window.activeTextEditor.viewColumn
@@ -33,13 +29,11 @@ export class GeminiPanel {
       this.panel = vscode.window.createWebviewPanel(
         GeminiPanel.viewType,
         'Gemini Assistant',
-        { viewColumn: columnToShowIn || vscode.ViewColumn.One, preserveFocus: true }, // Use an object for options
+        { viewColumn: columnToShowIn || vscode.ViewColumn.One, preserveFocus: true },
         {
           enableScripts: true,
           retainContextWhenHidden: true,
-          localResourceRoots: [
-            vscode.Uri.joinPath(this.extensionUri, 'media')
-          ]
+          localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, 'media')],
         }
       );
 
@@ -54,25 +48,20 @@ export class GeminiPanel {
       : undefined;
 
     if (this.panel) {
-      // If we already have a panel, show it in the current column
       this.panel.reveal(columnToShowIn);
       this.updateContent(question, answer);
     } else {
-      // Otherwise, create a new panel
       this.panel = vscode.window.createWebviewPanel(
-        GeminiPanel.viewType, // Use the static view type
+        GeminiPanel.viewType,
         'Gemini Assistant',
         columnToShowIn || vscode.ViewColumn.One,
         {
           enableScripts: true,
           retainContextWhenHidden: true,
-          localResourceRoots: [
-            vscode.Uri.joinPath(this.extensionUri, 'media')
-          ]
+          localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, 'media')],
         }
       );
 
-      // Set initial content
       this.updateContent(question, answer);
       this.setupPanelListeners();
     }
@@ -81,31 +70,28 @@ export class GeminiPanel {
   private setupPanelListeners() {
     if (!this.panel) return;
 
-    // Handle panel disposal
-    this.panel.onDidDispose(
-      () => {
-        this.panel = undefined;
-        this.disposables.forEach(d => d.dispose());
-        this.disposables = [];
-      },
-      null,
-      this.disposables
-    );
+    this.panel.onDidDispose(() => {
+      this.panel = undefined;
+      this.disposables.forEach((d) => d.dispose());
+      this.disposables = [];
+    }, null, this.disposables);
 
-    // Handle messages from the webview
     this.panel.webview.onDidReceiveMessage(
-      message => {
+      (message) => {
         switch (message.command) {
           case 'insertCode':
             const editor = vscode.window.activeTextEditor;
             if (editor) {
-              editor.edit(editBuilder => {
+              editor.edit((editBuilder) => {
                 editBuilder.insert(editor.selection.active, message.code);
               });
             }
             break;
           case 'saveContent':
             this.saveWebviewContent();
+            break;
+          case 'cutContent':
+            this.cutContent();
             break;
         }
       },
@@ -116,6 +102,7 @@ export class GeminiPanel {
     this.injectContextMenuScript();
   }
 
+  /*
   private injectContextMenuScript() {
     if (!this.panel) return;
 
@@ -124,54 +111,260 @@ export class GeminiPanel {
         const vscode = acquireVsCodeApi();
         document.addEventListener('contextmenu', event => {
           event.preventDefault();
-          let saveOption = document.createElement('div');
+          
+          // Remove existing context menu items
+          const existingContextMenu = document.getElementById('custom-context-menu');
+          if (existingContextMenu) {
+            existingContextMenu.remove();
+          }
+
+          const contextMenu = document.createElement('div');
+          contextMenu.id = 'custom-context-menu';
+          contextMenu.style.position = 'absolute';
+          contextMenu.style.left = event.clientX + 'px';
+          contextMenu.style.top = event.clientY + 'px';
+          contextMenu.style.backgroundColor = 'var(--vscode-menu-background)';
+          contextMenu.style.color = 'var(--vscode-menu-foreground)';
+          contextMenu.style.border = '1px solid var(--vscode-menu-border)';
+          contextMenu.style.padding = '5px';
+          contextMenu.style.zIndex = '1000';
+          contextMenu.style.borderRadius = '5px';
+          contextMenu.style.display = 'flex';
+          contextMenu.style.flexDirection = 'column';
+
+          const saveOption = document.createElement('div');
           saveOption.textContent = 'Save to File';
-          saveOption.style.position = 'absolute';
-          saveOption.style.left = event.clientX + 'px';
-          saveOption.style.top = event.clientY + 'px';
-          saveOption.style.backgroundColor = 'var(--vscode-menu-background)';
-          saveOption.style.color = 'var(--vscode-menu-foreground)';
-          saveOption.style.border = '1px solid var(--vscode-menu-border)';
-          saveOption.style.padding = '5px';
-          saveOption.style.zIndex = '1000';
           saveOption.style.cursor = 'pointer';
-
-          document.body.appendChild(saveOption);
-
+          saveOption.style.padding = '5px';
           saveOption.addEventListener('click', () => {
             vscode.postMessage({ command: 'saveContent' });
-            document.body.removeChild(saveOption);
+            contextMenu.remove();
           });
+          contextMenu.appendChild(saveOption);
 
+          const cutOption = document.createElement('div');
+          cutOption.textContent = 'Cut';
+          cutOption.style.cursor = 'pointer';
+          cutOption.style.padding = '5px';
+          cutOption.addEventListener('click', () => {
+            vscode.postMessage({ command: 'cutContent' });
+            contextMenu.remove();
+          });
+          contextMenu.appendChild(cutOption);
+
+          document.body.appendChild(contextMenu);
+
+          // Remove the context menu when clicking outside
           document.addEventListener('click', function onClickOutside(event) {
-            if (event.target !== saveOption) {
-              document.body.removeChild(saveOption);
+            if (!contextMenu.contains(event.target)) {
+              contextMenu.remove();
               document.removeEventListener('click', onClickOutside);
             }
           });
         });
+        // Listen for messages from the extension
+        window.addEventListener('message', event => {
+          const message = event.data;
+          if (message.command === 'cutText') {
+            const selection = window.getSelection();
+            if (selection.rangeCount > 0) {
+              const range = selection.getRangeAt(0);
+              const selectedText = selection.toString();
+
+              // Copy to clipboard
+              navigator.clipboard.writeText(selectedText)
+                .then(() => {
+                  // Delete from DOM
+                  const start = range.startOffset;
+                  const end = range.endOffset;
+                  const container = range.startContainer;
+
+                  if (container && container.textContent) {
+                    const text = container.textContent;
+                    const newText = text.substring(0, start) + text.substring(end);
+                    container.textContent = newText;
+                  }
+                })
+                .catch(err => {
+                  console.error('Failed to copy to clipboard:', err);
+                });
+            }
+          }
+        });
       </script>
     `;
 
-    // Inject the script only if it's not already there
-    if (!this.panel.webview.html.includes("vscode.postMessage({ command: 'saveContent' })")) {
-        this.panel.webview.html = this.panel.webview.html.replace('</body>', script + '</body>');
+    if (this.panel.webview.html.includes('</body>')) {
+      this.panel.webview.html = this.panel.webview.html.replace('</body>', script + '</body>');
     }
   }
+*/
+
+
+ private injectContextMenuScript() {
+    if (!this.panel) return;
+
+    // Add some basic CSS for hover effects
+    const css = `
+      <style>
+        #custom-context-menu > div:hover {
+          background-color: var(--vscode-menu-selectionBackground);
+          color: var(--vscode-menu-selectionForeground);
+        }
+      </style>
+    `;
+
+    const script = `
+      <script>
+        const vscode = acquireVsCodeApi();
+        let currentSelection = null; // Store selection info
+
+        // --- Helper Function to Remove Menu ---
+        function removeContextMenu() {
+          const existingContextMenu = document.getElementById('custom-context-menu');
+          if (existingContextMenu) {
+            existingContextMenu.remove();
+          }
+          // Clean up the outside click listener
+          document.removeEventListener('click', handleClickOutside);
+          currentSelection = null; // Clear stored selection
+        }
+
+        // --- Helper Function for Outside Click ---
+        function handleClickOutside(event) {
+          const contextMenu = document.getElementById('custom-context-menu');
+          // Check if the click is outside the menu
+          if (contextMenu && !contextMenu.contains(event.target)) {
+            removeContextMenu();
+          }
+        }
+
+        // --- Context Menu Listener ---
+        document.addEventListener('contextmenu', event => {
+          event.preventDefault();
+          removeContextMenu(); // Remove any existing menu first
+
+          // Store the selection *when the menu is opened*
+          const selection = window.getSelection();
+          if (selection && selection.rangeCount > 0 && !selection.isCollapsed) {
+              currentSelection = {
+                  text: selection.toString(),
+                  range: selection.getRangeAt(0).cloneRange() // Clone range for potential later use
+              };
+          } else {
+              currentSelection = null; // No active selection
+          }
+
+          const contextMenu = document.createElement('div');
+          contextMenu.id = 'custom-context-menu';
+          contextMenu.style.position = 'absolute';
+          contextMenu.style.left = event.clientX + 'px';
+          contextMenu.style.top = event.clientY + 'px';
+          contextMenu.style.backgroundColor = 'var(--vscode-menu-background)';
+          contextMenu.style.color = 'var(--vscode-menu-foreground)';
+          contextMenu.style.border = '1px solid var(--vscode-menu-border)';
+          contextMenu.style.padding = '5px 0'; // Adjust padding
+          contextMenu.style.zIndex = '1000';
+          contextMenu.style.borderRadius = '5px';
+          contextMenu.style.display = 'flex';
+          contextMenu.style.flexDirection = 'column';
+          contextMenu.style.minWidth = '100px'; // Give it some width
+
+          // --- Save Option ---
+          const saveOption = document.createElement('div');
+          saveOption.textContent = 'Save to File';
+          saveOption.style.cursor = 'pointer';
+          saveOption.style.padding = '5px 10px';
+          saveOption.addEventListener('click', () => {
+            vscode.postMessage({ command: 'saveContent' });
+            removeContextMenu();
+          });
+          contextMenu.appendChild(saveOption);
+
+          // --- Cut Option ---
+          const cutOption = document.createElement('div');
+          cutOption.textContent = 'Cut';
+          cutOption.style.padding = '5px 10px';
+
+          // Only enable 'Cut' if there was a selection when the menu opened
+          if (currentSelection && currentSelection.text) {
+            cutOption.style.cursor = 'pointer';
+            cutOption.addEventListener('click', () => {
+              if (currentSelection && currentSelection.text) {
+                // 1. Copy to clipboard
+                navigator.clipboard.writeText(currentSelection.text)
+                  .then(() => {
+                    // 2. Delete the selection from the DOM using the stored range
+                    // Make sure the selection is still visually selected (optional but good practice)
+                    window.getSelection().removeAllRanges();
+                    window.getSelection().addRange(currentSelection.range);
+
+                    // Use the more robust Range.deleteContents()
+                    currentSelection.range.deleteContents();
+
+                    // 3. Notify the extension (optional)
+                    vscode.postMessage({
+                      command: 'contentWasCut', // Use a different command name
+                      text: currentSelection.text
+                    });
+
+                    console.log('Cut successful:', currentSelection.text);
+                  })
+                  .catch(err => {
+                    console.error('Failed to cut to clipboard:', err);
+                    // Optionally notify the user or extension of the failure
+                    vscode.postMessage({ command: 'cutFailed', error: err.message });
+                  })
+                  .finally(() => {
+                     // 4. Remove the context menu regardless of success/failure
+                     removeContextMenu();
+                  });
+              } else {
+                // Fallback if selection somehow got lost (shouldn't happen with this logic)
+                removeContextMenu();
+              }
+            });
+          } else {
+            // Disable the option if no text was selected
+            cutOption.style.cursor = 'default';
+            cutOption.style.color = 'var(--vscode-disabledForeground)'; // Use VS Code's disabled color
+          }
+          contextMenu.appendChild(cutOption);
+
+          // --- Append Menu and Add Listener ---
+          document.body.appendChild(contextMenu);
+          // Add the listener *after* the menu is added to avoid immediate removal
+          // Use setTimeout to defer adding the listener slightly, preventing the
+          // contextmenu event's propagation from immediately triggering it.
+          setTimeout(() => {
+             document.addEventListener('click', handleClickOutside);
+          }, 0);
+        });
+
+        // No longer need the 'cutText' listener from the extension side
+        // window.addEventListener('message', event => { ... });
+
+      </script>
+    `;
+
+    // Inject CSS and Script
+    if (this.panel.webview.html.includes('</head>')) {
+      this.panel.webview.html = this.panel.webview.html.replace('</head>', css + '</head>');
+    }
+    if (this.panel.webview.html.includes('</body>')) {
+      this.panel.webview.html = this.panel.webview.html.replace('</body>', script + '</body>');
+    }
+  }
+
 
   public updateContent(question: string, answer: string): void {
     if (!this.panel) {
       return;
     }
 
-    // Convert markdown to HTML for the response
-    // Ensure we're getting a string by using marked.parse synchronously
     const htmlAnswer = new marked.Parser().parse(marked.Lexer.lex(answer));
-
-    // Get the existing content
     let existingContent = this.panel.webview.html;
 
-    // Wrap the existing content in HTML, head, and body tags if it's not already wrapped
     if (!existingContent.includes('<html')) {
       existingContent = '<!DOCTYPE html>\n' +
         '<html lang="en">\n' +
@@ -238,7 +431,6 @@ export class GeminiPanel {
         '</html>';
     }
 
-    // Append the new question and answer to the existing content
     this.panel.webview.html = existingContent + this.getWebviewContent(question, htmlAnswer);
     this.saveState(question, answer);
     this.currentQuestion = question;
@@ -247,13 +439,11 @@ export class GeminiPanel {
   }
 
   public saveState(question: string, answer: string): void {
-    // Save state to global state
     this.context.globalState.update('geminiQuestion', question);
     this.context.globalState.update('geminiAnswer', answer);
   }
 
   private getWebviewContent(question: string, answer: string): string {
-    // Create HTML content for the webview
     return `
       <div class="message user-message">
         <div class="message-header">You:</div>
@@ -267,8 +457,6 @@ export class GeminiPanel {
   }
 
   private processCodeBlocks(html: string): string {
-    // Add functionality to code blocks
-    // This is a simple approach - in a real extension, you might use a more robust HTML parsing
     return html.replace(/<pre><code class="language-(\w+)">([\s\S]*?)<\/code><\/pre>/g,
       (_match, language, code) => {
         return `<pre><code class="language-${language}">${code}</code></pre>`;
@@ -281,23 +469,16 @@ export class GeminiPanel {
       return;
     }
 
-    // Get the webview content
     const webviewContent = this.panel.webview.html;
-
-    // Extract the content of the chat
     const start = webviewContent.indexOf('<div class="message user-message">');
     const end = webviewContent.lastIndexOf('<div class="message assistant-message">');
-    
-    // If there is no messages, return
+
     if (start === -1 || end === -1) {
       vscode.window.showErrorMessage(`No content to save`);
       return;
     }
 
-    // Extract the content of the chat
     const content = webviewContent.substring(start, webviewContent.length);
-
-    // Wrap the content in a basic HTML structure
     const fullHtml = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -361,7 +542,10 @@ export class GeminiPanel {
     }
   }
 
- 
-
-
+  private cutContent() {
+    if (!this.panel) {
+      return;
+    }
+    this.panel.webview.postMessage({ command: 'cutText' });
+  }
 }
